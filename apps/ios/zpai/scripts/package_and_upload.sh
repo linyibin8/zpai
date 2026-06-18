@@ -103,6 +103,13 @@ security cms -D -i "$PROFILE_PATH" > build/profile.plist 2>/dev/null || security
 /usr/libexec/PlistBuddy -x -c "Print :Entitlements" build/profile.plist > "$ENTITLEMENTS" || true
 
 echo "=== [7/10] codesign frameworks + app ==="
+# 重新解锁 keychain 并加入搜索列表（避免 errSecInternalComponent / 证书链断裂）
+if [[ -n "${SIGNING_KEYCHAIN_PASSWORD:-}" ]]; then
+  security unlock-keychain -p "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN" 2>/dev/null || true
+  security list-keychains -d user -s "$SIGNING_KEYCHAIN" "$(security default-keychain -d user 2>/dev/null | tr -d '"')" 2>/dev/null || true
+  # 允许 codesign 访问私钥（不弹授权框）
+  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN" 2>/dev/null || true
+fi
 if [[ -d "$APP_PATH/Frameworks" ]]; then
   find "$APP_PATH/Frameworks" -name "*.framework" -o -name "*.dylib" | while read -r fw; do
     codesign --force --sign "$SIGNING_CERTIFICATE" --keychain "$SIGNING_KEYCHAIN" --timestamp=none "$fw"
@@ -112,6 +119,7 @@ codesign --force --sign "$SIGNING_CERTIFICATE" \
   --keychain "$SIGNING_KEYCHAIN" \
   --entitlements "$ENTITLEMENTS" \
   --timestamp=none \
+  --options runtime \
   "$APP_PATH"
 
 codesign --verify --deep --strict "$APP_PATH" && echo "OK codesign verified"
