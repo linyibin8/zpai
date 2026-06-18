@@ -175,29 +175,27 @@ cd "$PROJECT_DIR"
 echo "IPA: build/export/$SCHEME.ipa"
 
 echo "=== [9/10] upload to TestFlight ==="
-# altool 在 Xcode 26.5 上损坏（xcrun altool --version 都报 Defaults.properties invalid）。
-# 改用 rcodesign app-store-connect upload-app（同款工具签名已验证可用）。
+# altool 在 Xcode 26.5 损坏（Defaults.properties invalid），rcodesign 0.29.0 无上传功能。
+# 直接调用 iTMSTransporter（altool 内部用的真正上传工具，绕开坏掉的 altool 包装层）。
+ITMS="/Applications/Xcode.app/Contents/Developer/usr/bin/iTMSTransporter"
 IPA_PATH="build/export/$SCHEME.ipa"
 
-upload_via_rcodesign() {
-  "$RCODESIGN" app-store-connect \
-    --api-key-path "$ASC_KEY_PATH" \
-    --api-key-id "$ASC_KEY_ID" \
-    --api-issuer "$ASC_ISSUER_ID" \
-    upload-app \
-    --ipa "$IPA_PATH" < /dev/null
-}
-
-if [[ -f "$RCODESIGN" ]]; then
-  upload_via_rcodesign || { echo "FAIL rcodesign upload"; return 1 2>/dev/null || exit 5; }
+if [[ -f "$ITMS" ]]; then
+  "$ITMS" -m upload \
+    -asset "$IPA_PATH" \
+    -apiIssuer "$ASC_ISSUER_ID" \
+    -apiKey "$ASC_KEY_ID" \
+    -k "$ASC_KEY_PATH" \
+    -v eXtreme \
+    < /dev/null || { echo "FAIL iTMSTransporter upload"; exit 5; }
 else
-  # 兜底：altool（可能因 Defaults.properties 损坏而失败）
+  # 兜底：altool（可能损坏）
   xcrun altool --upload-app \
     -f "$IPA_PATH" \
     -t ios \
     --apiKey "$ASC_KEY_ID" \
     --apiIssuer "$ASC_ISSUER_ID" \
-    --type ios || { echo "FAIL altool upload (altool may be broken on this Xcode)"; exit 5; }
+    --type ios || { echo "FAIL altool upload (altool broken on Xcode 26.5)"; exit 5; }
 fi
 echo "OK uploaded"
 
