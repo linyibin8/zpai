@@ -49,7 +49,7 @@ struct PortraitView: View {
 
                     section("错误类型分布", icon: "chart.pie") {
                         let types = portrait.errorTypes ?? [:]
-                        if types.values.allSatisf({ $0 == 0 }) {
+                        if types.values.allSatisfy({ $0 == 0 }) {
                             emptyNote("暂无错题记录")
                         } else {
                             ForEach(types.sorted(by: { $0.value > $1.value }), id: \.key) { k, v in

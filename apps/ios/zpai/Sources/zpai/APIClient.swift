@@ -81,7 +81,7 @@ actor APIClient {
         try await get("/api/auth/me")
     }
 
-    func logout() {
+    nonisolated func logout() {
         UserPrefs.token = nil
         UserPrefs.currentProfileId = nil
     }

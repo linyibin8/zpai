@@ -39,7 +39,7 @@ final class SpeechService: NSObject, ObservableObject {
     /// 请求麦克风 + 语音识别权限并配置。
     func configure() async {
         SFSpeechRecognizer.requestAuthorization { _ in }
-        await AVAudioApplication.requestRecordPermission { _ in }
+        AVAudioSession.sharedInstance().requestRecordPermission { _ in }
     }
 
     // MARK: - STT
@@ -91,7 +91,7 @@ final class SpeechService: NSObject, ObservableObject {
                     let text = result.bestTranscription.formattedString
                     self.recognizedText = text
                     if result.isFinal {
-                        self.finish(with: text)
+                        self.finish(with: .final(text))
                     } else {
                         self.lastPartialAt = .now
                         self.resultHandler?(.partial(text))
@@ -100,7 +100,7 @@ final class SpeechService: NSObject, ObservableObject {
                 if error != nil {
                     // 没听清或出错：若已有部分文本则作为 final，否则报错
                     if !self.recognizedText.isEmpty {
-                        self.finish(with: self.recognizedText)
+                        self.finish(with: .final(self.recognizedText))
                     } else {
                         self.finish(with: .error("识别出错"))
                     }
@@ -116,7 +116,7 @@ final class SpeechService: NSObject, ObservableObject {
                     if self.recognizedText.isEmpty {
                         self.finish(with: .silence)
                     } else {
-                        self.finish(with: self.recognizedText)
+                        self.finish(with: .final(self.recognizedText))
                     }
                 }
             }
