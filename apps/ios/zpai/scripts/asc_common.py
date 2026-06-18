@@ -12,6 +12,7 @@ import urllib.error
 import uuid
 
 import jwt  # PyJWT
+from typing import Optional, Tuple, Any
 
 
 def env_required(name: str) -> str:
@@ -46,7 +47,7 @@ def make_jwt() -> str:
 API_BASE = "https://api.appstoreconnect.apple.com/v1"
 
 
-def api_request(method: str, path: str, body: dict | None = None) -> tuple[int, dict | None]:
+def api_request(method: str, path: str, body: Optional[dict] = None) -> Tuple[int, Optional[dict]]:
     token = make_jwt()
     url = path if path.startswith("http") else f"{API_BASE}{path}"
     headers = {
