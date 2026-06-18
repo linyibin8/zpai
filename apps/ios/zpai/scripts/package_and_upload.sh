@@ -103,26 +103,52 @@ security cms -D -i "$PROFILE_PATH" > build/profile.plist 2>/dev/null || security
 /usr/libexec/PlistBuddy -x -c "Print :Entitlements" build/profile.plist > "$ENTITLEMENTS" || true
 
 echo "=== [7/10] codesign frameworks + app ==="
-# 重新解锁 keychain 并加入搜索列表（避免 errSecInternalComponent / 证书链断裂）
+# 优先用 rcodesign + PEM 证书（不依赖 keychain，绕开 unable to build chain）
+RCODESIGN="/Users/macstar/Tools/apple-codesign/apple-codesign-0.29.0-macos-universal/rcodesign"
+CERT_KEY_PEM="/Users/macstar/Desktop/p12/dist_cert_private_key.pem"
+CERT_PEM="/Users/macstar/Desktop/p12/distribution-cert.pem"
+
+sign_one() {
+  local target="$1"
+  if [[ -f "$RCODESIGN" && -f "$CERT_KEY_PEM" && -f "$CERT_PEM" ]]; then
+    "$RCODESIGN" sign \
+      --pem-file "$CERT_KEY_PEM" \
+      --pem-file "$CERT_PEM" \
+      --timestamp-url none \
+      "$target" < /dev/null
+  else
+    /usr/bin/codesign --force --keychain "$SIGNING_KEYCHAIN" \
+      --sign "$SIGNING_CERTIFICATE" --timestamp=none "$target"
+  fi
+}
+
 if [[ -n "${SIGNING_KEYCHAIN_PASSWORD:-}" ]]; then
   security unlock-keychain -p "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN" 2>/dev/null || true
-  security list-keychains -d user -s "$SIGNING_KEYCHAIN" "$(security default-keychain -d user 2>/dev/null | tr -d '"')" 2>/dev/null || true
-  # 允许 codesign 访问私钥（不弹授权框）
-  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$SIGNING_KEYCHAIN_PASSWORD" "$SIGNING_KEYCHAIN" 2>/dev/null || true
+  security list-keychains -d user -s "$SIGNING_KEYCHAIN" "/Library/Keychains/System.keychain" 2>/dev/null || true
 fi
-if [[ -d "$APP_PATH/Frameworks" ]]; then
-  find "$APP_PATH/Frameworks" -name "*.framework" -o -name "*.dylib" | while read -r fw; do
-    codesign --force --sign "$SIGNING_CERTIFICATE" --keychain "$SIGNING_KEYCHAIN" --timestamp=none "$fw"
-  done
-fi
-codesign --force --sign "$SIGNING_CERTIFICATE" \
-  --keychain "$SIGNING_KEYCHAIN" \
-  --entitlements "$ENTITLEMENTS" \
-  --timestamp=none \
-  --options runtime \
-  "$APP_PATH"
 
-codesign --verify --deep --strict "$APP_PATH" && echo "OK codesign verified"
+if [[ -d "$APP_PATH/Frameworks" ]]; then
+  while IFS= read -r -d '' fw; do
+    sign_one "$fw"
+  done < <(find "$APP_PATH/Frameworks" \( -name '*.framework' -o -name '*.dylib' \) -print0)
+fi
+
+if [[ -f "$RCODESIGN" && -f "$CERT_KEY_PEM" && -f "$CERT_PEM" ]]; then
+  "$RCODESIGN" sign \
+    --pem-file "$CERT_KEY_PEM" \
+    --pem-file "$CERT_PEM" \
+    --timestamp-url none \
+    --entitlements-xml-file "$ENTITLEMENTS" \
+    "$APP_PATH" < /dev/null
+else
+  /usr/bin/codesign --force --keychain "$SIGNING_KEYCHAIN" \
+    --sign "$SIGNING_CERTIFICATE" \
+    --entitlements "$ENTITLEMENTS" \
+    --generate-entitlement-der \
+    "$APP_PATH"
+fi
+
+/usr/bin/codesign --verify --deep --strict "$APP_PATH" && echo "OK codesign verified"
 
 echo "=== [8/10] package IPA ==="
 mkdir -p build/export/Payload
