@@ -27,18 +27,29 @@ if [[ -f "$ENV_FILE" ]]; then
   set -a; source "$ENV_FILE"; set +a
 fi
 
-: "${APP_BUNDLE_ID:=com.linyibin8.zpai}"
-: "${APP_NAME:=zpai}"
-: "${APP_VERSION:=0.1.0}"
-: "${APP_BUILD_NUMBER:=$(date +%Y%m%d%H%M)}"
-: "${APPLE_TEAM_ID:=N3G45G5H74}"
-# 强制用 zpai 专属 profile（不被 ios-publish.env 的 paicc46 覆盖）
-PROFILE_NAME="zpai_appstore_profile"
+# 关键：source 共享 env 后，必须强制覆盖 zpai 专属身份变量。
+# 用 := 只在变量为空时生效，会被共享 env 的 com.evowit.paicc46 等值覆盖，
+# 导致 IPA 被打成别的 App。这里用 export 强制赋值，确保用 zpai 的身份。
+export APP_BUNDLE_ID="com.linyibin8.zpai"
+export APP_NAME="zpai"
+export APP_SKU="zpai001"
+export APP_VERSION="0.1.0"
+export APP_BUILD_NUMBER="$(date +%Y%m%d%H%M)"
+export APPLE_TEAM_ID="N3G45G5H74"
+export PROFILE_NAME="zpai_appstore_profile"
+export TESTFLIGHT_GROUP_NAME="zpai Internal"
+# 共享凭据类变量仍从 env 读（不在项目里硬编码）
 : "${ASC_KEY_ID:?ASC_KEY_ID required (set in ios-publish.env)}"
 : "${ASC_ISSUER_ID:?ASC_ISSUER_ID required}"
 : "${ASC_KEY_PATH:?ASC_KEY_PATH required (.p8)}"
 : "${SIGNING_CERTIFICATE:?SIGNING_CERTIFICATE required}"
 : "${SIGNING_KEYCHAIN:?SIGNING_KEYCHAIN required}"
+
+echo "=== [0/10] 身份校验（必须全部是 zpai）==="
+echo "  APP_BUNDLE_ID = $APP_BUNDLE_ID"
+echo "  APP_NAME      = $APP_NAME"
+echo "  PROFILE_NAME  = $PROFILE_NAME"
+[[ "$APP_BUNDLE_ID" == "com.linyibin8.zpai" ]] || { echo "FAIL: bundle id 不是 zpai，终止"; exit 1; }
 
 echo "=== [1/10] unlock keychain ==="
 if [[ -n "${SIGNING_KEYCHAIN_PASSWORD:-}" ]]; then
