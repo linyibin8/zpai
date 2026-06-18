@@ -21,7 +21,8 @@ struct AppConfig {
             // 同步推导 ws 地址
             var wsComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)
             wsComponents?.scheme = url.scheme == "https" ? "wss" : "ws"
-            wsComponents?.path = (wsComponents?.path ?? "") + "/ws"
+            let existingPath = wsComponents?.path ?? ""
+            wsComponents?.path = existingPath + "/ws"
             let wsURL = wsComponents?.url ?? AppConfig.default.webSocketURL
             return AppConfig(apiBaseURL: url, webSocketURL: wsURL)
         }
