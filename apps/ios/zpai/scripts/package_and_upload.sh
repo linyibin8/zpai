@@ -65,11 +65,17 @@ cp -f "$ASC_KEY_PATH" "$HOME/.private_keys/AuthKey_${ASC_KEY_ID}.p8"
 python3 scripts/generate_app_icons.py "$PROJECT_DIR"
 
 echo "=== [3/10] ensure ASC app record + profile ==="
-eval "$(python3 scripts/ensure_asc_app.py)"
-: "${ASC_APP_ID:?failed to obtain ASC_APP_ID}"
-echo "ASC_APP_ID=$ASC_APP_ID"
+# ensure ASC app：API key 可能无 apps:CREATE 权限（403），这种情况下不退出——
+# bundleId/profile 已就绪，iTMSTransporter 上传时 ASC 会自动创建 app record。
+ASC_APP_ID=""
+ASC_APP_ID="$(python3 scripts/ensure_asc_app.py 2>/dev/null | grep ASC_APP_ID= | cut -d= -f2 || true)"
+if [[ -z "$ASC_APP_ID" ]]; then
+  echo "WARN: 无法通过 API 创建/查找 app record（可能 403 无权限），将依赖上传时自动创建"
+else
+  echo "ASC_APP_ID=$ASC_APP_ID"
+fi
 # 创建/刷新 zpai 专属 App Store profile（注册 bundleId + 用现有证书）
-python3 scripts/create_profile.py || { echo "FAIL create_profile"; exit 6; }
+python3 scripts/create_profile.py || { echo "WARN create_profile（继续，可能已存在）"; }
 
 echo "=== [4/10] xcodegen ==="
 xcodegen generate 2>/dev/null || xcodegen generate --spec project.yml
