@@ -6,13 +6,11 @@ zpai App Store Connect 公共工具：JWT 签名、API 请求封装。
 import json
 import os
 import sys
+import subprocess
 import time
-import urllib.request
-import urllib.error
-import uuid
 
 import jwt  # PyJWT
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple
 
 
 def env_required(name: str) -> str:
@@ -48,32 +46,45 @@ API_BASE = "https://api.appstoreconnect.apple.com/v1"
 
 
 def api_request(method: str, path: str, body: Optional[dict] = None) -> Tuple[int, Optional[dict]]:
+    """用 curl 子进程发请求（urllib 在某些网络环境被 reset，curl 更稳）。"""
     token = make_jwt()
     url = path if path.startswith("http") else f"{API_BASE}{path}"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.api+json",
-    }
-    data = None
+    cmd = [
+        "curl", "-sS", "-m", "60", "-X", method,
+        "-H", f"Authorization: Bearer {token}",
+        "-H", "Accept: application/vnd.api+json",
+        "-w", "\n%{http_code}",
+    ]
     if body is not None:
-        data = json.dumps(body).encode("utf-8")
-        headers["Content-Type"] = "application/vnd.api+json"
-    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+        cmd += ["-H", "Content-Type: application/vnd.api+json", "-d", json.dumps(body)]
+    cmd.append(url)
+
     try:
-        with urllib.request.urlopen(req) as resp:
-            raw = resp.read().decode("utf-8")
-            return resp.status, (json.loads(raw) if raw else None)
-    except urllib.error.HTTPError as e:
-        raw = e.read().decode("utf-8")
-        try:
-            return e.code, json.loads(raw)
-        except Exception:
-            return e.code, {"_raw": raw}
-    except Exception as e:
-        return 0, {"_error": str(e)}
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=70)
+    except subprocess.TimeoutExpired:
+        return 0, {"_error": "curl timeout"}
+    output = result.stdout
+    # 最后一行是 http_code
+    parts = output.rsplit("\n", 1)
+    if len(parts) == 2:
+        body_text, code_str = parts
+    else:
+        body_text, code_str = output, "0"
+    try:
+        code = int(code_str.strip())
+    except ValueError:
+        code = 0
+        body_text = output
+    if not body_text.strip():
+        return code, None
+    try:
+        return code, json.loads(body_text)
+    except Exception:
+        return code, {"_raw": body_text[:500]}
 
 
 def new_id() -> str:
+    import uuid
     return str(uuid.uuid4())
 
 
