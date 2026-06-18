@@ -32,7 +32,8 @@ fi
 : "${APP_VERSION:=0.1.0}"
 : "${APP_BUILD_NUMBER:=$(date +%Y%m%d%H%M)}"
 : "${APPLE_TEAM_ID:=N3G45G5H74}"
-: "${PROFILE_NAME:=zpai_appstore_profile}"
+# 强制用 zpai 专属 profile（不被 ios-publish.env 的 paicc46 覆盖）
+PROFILE_NAME="zpai_appstore_profile"
 : "${ASC_KEY_ID:?ASC_KEY_ID required (set in ios-publish.env)}"
 : "${ASC_ISSUER_ID:?ASC_ISSUER_ID required}"
 : "${ASC_KEY_PATH:?ASC_KEY_PATH required (.p8)}"
