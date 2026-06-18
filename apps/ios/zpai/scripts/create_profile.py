@@ -68,13 +68,12 @@ def list_certificates():
 
 
 def create_profile(bundle_id_obj, cert_ids, name, team_id):
-    # 先查同名 profile
-    status, data = api_request("GET", f"/profiles?filter[name]={urllib.parse.quote(name)}&limit=50")
-    if status == 200 and data:
-        for p in data.get("data", []):
-            if p.get("attributes", {}).get("name") == name:
-                # 删除旧的重建
-                api_request("DELETE", f"/profiles/{p['id']}")
+    # 先查同名 profile 是否已存在（全量遍历，curl filter 不可靠）
+    existing = find_profile_by_name(name)
+    if existing:
+        print(f"OK profile {name} already exists, reusing", file=sys.stderr)
+        return existing
+    # 创建
     body = {
         "data": {
             "type": "profiles",
@@ -92,11 +91,34 @@ def create_profile(bundle_id_obj, cert_ids, name, team_id):
     status, data = api_request("POST", "/profiles", body)
     if status == 201 and data:
         return data["data"]
+    if status == 409:
+        # 已存在，重新查
+        existing = find_profile_by_name(name)
+        if existing:
+            return existing
     print(f"FAIL create profile returned {status}", file=sys.stderr)
     if data:
         import json
         print(json.dumps(data, ensure_ascii=False)[:500], file=sys.stderr)
     return None
+
+
+def find_profile_by_name(name: str):
+    """全量遍历查找 profile（filter 在 curl 下不可靠），并补取 profileContent。"""
+    status, data = api_request("GET", "/profiles?limit=200")
+    found = None
+    if status == 200 and data:
+        for p in data.get("data", []):
+            if p.get("attributes", {}).get("name") == name:
+                found = p
+                break
+    if found:
+        # 列表可能不含 profileContent，单查实体
+        if not found.get("attributes", {}).get("profileContent"):
+            s2, d2 = api_request("GET", f"/profiles/{found['id']}")
+            if s2 == 200 and d2 and d2.get("data"):
+                found = d2["data"]
+    return found
 
 
 def install_profile(profile_obj, profile_name: str):
