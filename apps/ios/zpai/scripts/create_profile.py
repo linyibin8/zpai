@@ -20,10 +20,10 @@ from asc_common import api_request, env_required, env_or
 
 
 def register_bundle_id(bundle_id: str, name: str, team_id: str):
-    # 先查是否存在
-    status, data = api_request("GET", f"/bundleIds?filter[identifier]={bundle_id}")
-    if status == 200 and data and data.get("data"):
-        return data["data"][0]
+    # 先查是否存在（filter 在某些 curl 场景不生效，用全量遍历兜底）
+    bid = find_bundle_id(bundle_id)
+    if bid:
+        return bid
     # 创建
     body = {
         "data": {
@@ -38,7 +38,25 @@ def register_bundle_id(bundle_id: str, name: str, team_id: str):
     status, data = api_request("POST", "/bundleIds", body)
     if status == 201 and data:
         return data["data"]
+    if status == 409:
+        # 已存在，重新查
+        bid = find_bundle_id(bundle_id)
+        if bid:
+            return bid
     print(f"WARN register bundleId returned {status}", file=sys.stderr)
+    if data:
+        import json
+        print(json.dumps(data, ensure_ascii=False)[:300], file=sys.stderr)
+    return None
+
+
+def find_bundle_id(bundle_id: str):
+    """全量遍历查找 bundleId（filter 在 curl 下不可靠）。"""
+    status, data = api_request("GET", "/bundleIds?limit=200")
+    if status == 200 and data:
+        for b in data.get("data", []):
+            if b.get("attributes", {}).get("identifier") == bundle_id:
+                return b
     return None
 
 
