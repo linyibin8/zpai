@@ -174,13 +174,31 @@ zip -qr "$SCHEME.ipa" Payload SwiftSupport 2>/dev/null || zip -qr "$SCHEME.ipa" 
 cd "$PROJECT_DIR"
 echo "IPA: build/export/$SCHEME.ipa"
 
-echo "=== [9/10] upload to TestFlight (altool) ==="
-xcrun altool --upload-app \
-  -f "build/export/$SCHEME.ipa" \
-  -t ios \
-  --apiKey "$ASC_KEY_ID" \
-  --apiIssuer "$ASC_ISSUER_ID" \
-  --type ios || { echo "FAIL altool upload"; exit 5; }
+echo "=== [9/10] upload to TestFlight ==="
+# altool 在 Xcode 26.5 上损坏（xcrun altool --version 都报 Defaults.properties invalid）。
+# 改用 rcodesign app-store-connect upload-app（同款工具签名已验证可用）。
+IPA_PATH="build/export/$SCHEME.ipa"
+
+upload_via_rcodesign() {
+  "$RCODESIGN" app-store-connect \
+    --api-key-path "$ASC_KEY_PATH" \
+    --api-key-id "$ASC_KEY_ID" \
+    --api-issuer "$ASC_ISSUER_ID" \
+    upload-app \
+    --ipa "$IPA_PATH" < /dev/null
+}
+
+if [[ -f "$RCODESIGN" ]]; then
+  upload_via_rcodesign || { echo "FAIL rcodesign upload"; return 1 2>/dev/null || exit 5; }
+else
+  # 兜底：altool（可能因 Defaults.properties 损坏而失败）
+  xcrun altool --upload-app \
+    -f "$IPA_PATH" \
+    -t ios \
+    --apiKey "$ASC_KEY_ID" \
+    --apiIssuer "$ASC_ISSUER_ID" \
+    --type ios || { echo "FAIL altool upload (altool may be broken on this Xcode)"; exit 5; }
+fi
 echo "OK uploaded"
 
 echo "=== [10/10] configure testflight ==="
