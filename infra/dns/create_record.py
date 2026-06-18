@@ -127,7 +127,7 @@ def create_record(secret_id: str, secret_key: str, domain: str, sub: str, ip: st
         "RecordType": "A",
         "RecordLine": "默认",
         "Value": ip,
-        "TTL": 300,
+        "TTL": 600,
         "Remark": "zpai 学习陪伴工具",
     }
     return call(secret_id, secret_key, "CreateRecord", payload)
