@@ -1,0 +1,53 @@
+# ---- secrets / env (never commit) ----
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.mobileprovision
+*.ipa
+*.xcarchive
+private_keys/
+.private_keys/
+
+# ---- node ----
+node_modules/
+package-lock.json
+npm-debug.log*
+yarn-error.log*
+
+# ---- build output ----
+dist/
+build/
+*.tsbuildinfo
+apps/console/dist/
+apps/server/dist/
+packages/shared/dist/
+
+# ---- runtime data (server) ----
+data/
+uploads/
+*.sqlite
+*.sqlite3
+*.db
+!**/migrations/**/*.sql
+
+# ---- iOS ----
+apps/ios/zpai/.build/
+apps/ios/zpai/build/
+apps/ios/zpai/DerivedData/
+apps/ios/zpai/*.xcodeproj/
+apps/ios/zpai/xcuserdata/
+apps/ios/zpai/.swiftpm/
+apps/ios/zpai/AppIcon.appiconset/generated/
+
+# ---- editors / OS ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.tmp
+.tmp-*
+
+# ---- docs local ----
+docs/_draft/

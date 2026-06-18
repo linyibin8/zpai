@@ -1,0 +1,20 @@
+{
+  "apps": [
+    {
+      "name": "zpai",
+      "script": "dist/index.js",
+      "cwd": "/home/ydz/apps/zpai/apps/server",
+      "instances": 1,
+      "exec_mode": "fork",
+      "max_memory_restart": "1G",
+      "env": {
+        "NODE_ENV": "production"
+      },
+      "out_file": "/home/ydz/.pm2/logs/zpai-out.log",
+      "error_file": "/home/ydz/.pm2/logs/zpai-error.log",
+      "time": true,
+      "autorestart": true,
+      "max_restarts": 10
+    }
+  ]
+}
