@@ -87,9 +87,24 @@ def install_profile(profile_obj, profile_name: str):
         print("FAIL: profileContent missing", file=sys.stderr)
         sys.exit(5)
     profile_bytes = base64.b64decode(content)
-    # 解析拿 UUID
-    plist = plistlib.loads(profile_bytes)
-    uuid = plist.get("UUID", "")
+    # mobileprovision 是 CMS 签名的 plist，用 security cms -D 解出 UUID
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".mobileprovision", delete=False) as tf:
+        tf.write(profile_bytes)
+        tmp_path = tf.name
+    try:
+        result = subprocess.run(
+            ["security", "cms", "-D", "-i", tmp_path],
+            capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            print(f"FAIL: cannot decode profile plist: {result.stderr[:200]}", file=sys.stderr)
+            sys.exit(6)
+        import plistlib
+        plist = plistlib.loads(result.stdout.encode("utf-8"))
+        uuid = plist.get("UUID", "")
+    finally:
+        os.unlink(tmp_path)
     if not uuid:
         print("FAIL: cannot parse profile UUID", file=sys.stderr)
         sys.exit(6)
