@@ -32,6 +32,7 @@ fi
 : "${APP_VERSION:=0.1.0}"
 : "${APP_BUILD_NUMBER:=$(date +%Y%m%d%H%M)}"
 : "${APPLE_TEAM_ID:=N3G45G5H74}"
+: "${PROFILE_NAME:=zpai_appstore_profile}"
 : "${ASC_KEY_ID:?ASC_KEY_ID required (set in ios-publish.env)}"
 : "${ASC_ISSUER_ID:?ASC_ISSUER_ID required}"
 : "${ASC_KEY_PATH:?ASC_KEY_PATH required (.p8)}"
@@ -51,10 +52,12 @@ mkdir -p "$HOME/.private_keys"
 cp -f "$ASC_KEY_PATH" "$HOME/.private_keys/AuthKey_${ASC_KEY_ID}.p8"
 python3 scripts/generate_app_icons.py "$PROJECT_DIR"
 
-echo "=== [3/10] ensure ASC app record ==="
+echo "=== [3/10] ensure ASC app record + profile ==="
 eval "$(python3 scripts/ensure_asc_app.py)"
 : "${ASC_APP_ID:?failed to obtain ASC_APP_ID}"
 echo "ASC_APP_ID=$ASC_APP_ID"
+# 创建/刷新 zpai 专属 App Store profile（注册 bundleId + 用现有证书）
+python3 scripts/create_profile.py || { echo "FAIL create_profile"; exit 6; }
 
 echo "=== [4/10] xcodegen ==="
 xcodegen generate 2>/dev/null || xcodegen generate --spec project.yml
@@ -75,18 +78,27 @@ xcodebuild archive \
 
 echo "=== [6/10] embed profile + extract entitlements ==="
 PROFILE_NAME="${PROFILE_NAME:-}"
-if [[ -z "$PROFILE_NAME" ]]; then
-  # 取最新 App Store profile
+# 按 plist Name 字段匹配 PROFILE_NAME（create_profile 安装的用 UUID 命名）
+PROFILE_PATH=""
+for f in "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision; do
+  [[ -f "$f" ]] || continue
+  pname="$(security cms -D -i "$f" 2>/dev/null | grep -A1 '<key>Name</key>' | grep '<string>' | head -1 | sed 's/.*<string>//;s/<.*//')"
+  if [[ "$pname" == "$PROFILE_NAME" ]]; then
+    PROFILE_PATH="$f"
+    break
+  fi
+done
+# 兜底：取最新
+if [[ -z "$PROFILE_PATH" ]]; then
   PROFILE_PATH="$(ls -t "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision 2>/dev/null | head -1 || true)"
-else
-  PROFILE_PATH="$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_NAME}.mobileprovision"
 fi
 : "${PROFILE_PATH:?no provisioning profile found}"
+echo "using profile: $PROFILE_PATH (name=$PROFILE_NAME)"
 cp -f "$PROFILE_PATH" "build/embedded.mobileprovision"
 
 APP_PATH="build/$SCHEME.xcarchive/Products/Applications/$SCHEME.app"
 ENTITLEMENTS="build/zpai.entitlements"
-security cms -D -d "$PROFILE_PATH" > build/profile.plist
+security cms -D -i "$PROFILE_PATH" > build/profile.plist 2>/dev/null || security cms -D -d "$PROFILE_PATH" > build/profile.plist
 /usr/libexec/PlistBuddy -x -c "Print :Entitlements" build/profile.plist > "$ENTITLEMENTS" || true
 
 echo "=== [7/10] codesign frameworks + app ==="
