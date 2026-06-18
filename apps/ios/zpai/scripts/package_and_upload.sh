@@ -167,42 +167,51 @@ fi
 
 /usr/bin/codesign --verify --deep --strict "$APP_PATH" && echo "OK codesign verified"
 
-echo "=== [8/10] package IPA ==="
-mkdir -p build/export/Payload
-cp -R "$APP_PATH" "build/export/Payload/"
-# SwiftSupport
-if [[ -d "$APP_PATH/Frameworks" ]]; then
-  mkdir -p "build/export/SwiftSupport"
-  cp -R "$APP_PATH/Frameworks/"* "build/export/SwiftSupport/" 2>/dev/null || true
-fi
-cd build/export
-zip -qr "$SCHEME.ipa" Payload SwiftSupport 2>/dev/null || zip -qr "$SCHEME.ipa" Payload
-cd "$PROJECT_DIR"
-echo "IPA: build/export/$SCHEME.ipa"
+echo "=== [8/10] export + upload via xcodebuild -exportArchive ==="
+# Xcode 26.5 移除了独立 iTMSTransporter（要求装 Transporter.app）。
+# 用 xcodebuild -exportArchive（Xcode 原生，自动调用 ContentDeliveryServices 上传）。
+# 前提：xcarchive 里的 .app 已由 rcodesign 签名（第7步）。
+EXPORT_OPTIONS="build/export-options.plist"
+cat > "$EXPORT_OPTIONS" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>app-store-connect</string>
+  <key>destination</key>
+  <string>upload</string>
+  <key>manageAppVersionAndBuildNumber</key>
+  <true/>
+  <key>signingStyle</key>
+  <string>manual</string>
+  <key>teamID</key>
+  <string>$APPLE_TEAM_ID</string>
+  <key>uploadBitcode</key>
+  <false/>
+  <key>uploadSymbols</key>
+  <false/>
+</dict>
+</plist>
+PLIST
 
-echo "=== [9/10] upload to TestFlight ==="
-# altool 在 Xcode 26.5 损坏（Defaults.properties invalid），rcodesign 0.29.0 无上传功能。
-# 直接调用 iTMSTransporter（altool 内部用的真正上传工具，绕开坏掉的 altool 包装层）。
-ITMS="/Applications/Xcode.app/Contents/Developer/usr/bin/iTMSTransporter"
+# 写 ASC API key 到 Xcode 能找到的位置（exportArchive 自动读取 ~/.private_keys 或 AuthKey）
+mkdir -p "$HOME/.private_keys"
+cp -f "$ASC_KEY_PATH" "$HOME/.private_keys/AuthKey_${ASC_KEY_ID}.p8"
+
+xcodebuild -exportArchive \
+  -archivePath "build/$SCHEME.xcarchive" \
+  -exportPath "build/export" \
+  -exportOptionsPlist "$EXPORT_OPTIONS" \
+  -allowProvisioningUpdates \
+  -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+  -authenticationKeyID "$ASC_KEY_ID" \
+  -authenticationKeyPath "$ASC_KEY_PATH" \
+  < /dev/null || { echo "FAIL exportArchive upload"; exit 5; }
+
+echo "=== [9/10] (exportArchive 已含上传，跳过独立上传) ==="
 IPA_PATH="build/export/$SCHEME.ipa"
-
-if [[ -f "$ITMS" ]]; then
-  "$ITMS" -m upload \
-    -asset "$IPA_PATH" \
-    -apiIssuer "$ASC_ISSUER_ID" \
-    -apiKey "$ASC_KEY_ID" \
-    -k "$ASC_KEY_PATH" \
-    -v eXtreme \
-    < /dev/null || { echo "FAIL iTMSTransporter upload"; exit 5; }
-else
-  # 兜底：altool（可能损坏）
-  xcrun altool --upload-app \
-    -f "$IPA_PATH" \
-    -t ios \
-    --apiKey "$ASC_KEY_ID" \
-    --apiIssuer "$ASC_ISSUER_ID" \
-    --type ios || { echo "FAIL altool upload (altool broken on Xcode 26.5)"; exit 5; }
-fi
+[[ -f "$IPA_PATH" ]] && echo "IPA: $IPA_PATH" || echo "WARN: IPA 未生成（可能直接上传了）"
 echo "OK uploaded"
 
 echo "=== [10/10] configure testflight ==="
