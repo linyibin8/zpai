@@ -4,6 +4,7 @@
       "name": "zpai",
       "script": "dist/index.js",
       "cwd": "/home/ydz/apps/zpai/apps/server",
+      "node_args": "--env-file=/home/ydz/apps/zpai/.env",
       "instances": 1,
       "exec_mode": "fork",
       "max_memory_restart": "1G",

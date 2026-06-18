@@ -3,6 +3,50 @@
  * 真实密钥只放在服务机 .env，不进仓库。
  */
 
+import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
+
+/**
+ * 手动加载 .env（不依赖 dotenv）。
+ * 在 config 读取 process.env 之前执行：把 .env 里的 KEY=VALUE 写入 process.env，
+ * 但不覆盖已存在的环境变量（让 PM2/系统 env 优先）。
+ * 查找顺序：cwd/.env → 上两级 ../.env（apps/server 的根 .env）。
+ */
+function loadEnvFile(): void {
+  const candidates = [
+    resolve(process.cwd(), ".env"),
+    resolve(process.cwd(), "../.env"),
+    resolve(process.cwd(), "../../.env")
+  ];
+  for (const path of candidates) {
+    if (!existsSync(path)) continue;
+    try {
+      const content = readFileSync(path, "utf8");
+      for (const line of content.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eq = trimmed.indexOf("=");
+        if (eq === -1) continue;
+        const key = trimmed.slice(0, eq).trim();
+        let value = trimmed.slice(eq + 1).trim();
+        // 去掉首尾引号
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        // 不覆盖已存在的环境变量
+        if (process.env[key] === undefined) {
+          process.env[key] = value;
+        }
+      }
+      return; // 找到第一个就停
+    } catch {
+      // 读失败则尝试下一个候选
+    }
+  }
+}
+
+loadEnvFile();
+
 function required(name: string, fallback?: string): string {
   const value = process.env[name] ?? fallback;
   if (value === undefined) {
